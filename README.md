@@ -60,7 +60,7 @@ Ollama가 실행 중인 상태에서, 터미널에 아래 명령어를 입력하
 ollama pull llama3:8b
 
 
-🚀 2단계: 데이터베이스 구축 및 데이터 색인 (Docker 실행)
+💾 2단계: 데이터베이스 구축 및 데이터 색인 (Docker 실행)
 
 이 단계는 관세청 데이터를 수집하고 벡터화하여 Elasticsearch에 저장하는 일회성 작업입니다.
 
@@ -77,8 +77,9 @@ app 컨테이너는 run.sh 스크립트를 통해 데이터 수집부터 색인�
 docker-compose up -d --build
 
 
-데이터 색인이 완료될 때까지 기다립니다. (중요!)
+데이터 색인이 완료될 때까지 기다립니다.
 
+(매우 중요!)
 다른 터미널을 열어 아래 명령어로 로그를 확인합니다.
 
 docker-compose logs -f app
@@ -115,12 +116,13 @@ python customs_agent.py
 
 터미널에 환영 메시지가 뜨면, 관세 행정에 대해 질문하시면 됩니다.
 
-[질문 입력] > 반출입금지 물품에 대해서 알려줘
-![alt text](image.png)
+[질문 입력] > 해외 직구 면세 한도 알려줘
+
 
 🏁 종료하기
 
-AI 에이전트 종료: customs_agent.py가 실행 중인 터미널에서 q 또는 exit를 입력합니다.
+AI 에이전트 종료:
+customs_agent.py가 실행 중인 터미널에서 q 또는 exit를 입력합니다.
 
 Docker 컨테이너 종료: (Elasticsearch DB 종료)
 
