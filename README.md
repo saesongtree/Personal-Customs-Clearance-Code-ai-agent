@@ -1,129 +1,190 @@
-관세 행정 AI 에이전트 (RAG)
+#관세 행정 AI 에이전트 (RAG) - 개발 요약 및 실행 가이드
 
-이 프로젝트는 일반 국민(개인)을 대상으로 한 관세 행정 질문에 답변하는 RAG(Retrieval-Augmented Generation) AI 에이전트입니다.
+이 프로젝트는 일반 국민(개인)을 대상으로 한 관세 행정 질문에 답변하는 RAG(Retrieval-Augmented Generation) AI 에이전트입니다. 관세청 웹사이트의 공개 정보(HTML, PDF)를 기반으로 벡터 데이터베이스를 구축하고, 로컬 LLM(Llama 3B)을 사용하여 근거 기반 답변을 생성합니다.
 
-관세청 웹사이트의 공개 정보(HTML, PDF)를 기반으로 Elasticsearch에 벡터 데이터베이스를 구축하고, 로컬 LLM(Llama 3B)을 사용하여 사용자의 질문에 근거 기반으로 답변합니다.
+이 문서는 이 프로젝트를 구축하며 수행한 핵심 작업과 문제 해결 과정을 요약하고, 다른 환경에서 이를 재현하기 위한 실행 가이드를 제공합니다.
 
-🚀 주요 기술 스택
+##🚀 1. 프로젝트 주요 특징 (우리가 수행한 작업들)
 
-LLM (언어 모델): Llama 3B (llama3:8b) / Ollama
+이 프로젝트는 단순한 스크립트 실행을 넘어, 실제 운영 환경에서 발생하는 다양한 문제들을 해결한 결과물입니다.
 
-Vector DB (벡터 DB): Elasticsearch (v9.1.1)
+Docker 기반 데이터 파이프라인: docker-compose를 사용하여 데이터 수집(datacollect.py), 전처리(preprocess_data.py), 색인(index_data.py) 과정을 app 컨테이너에서 원클릭으로 자동 실행합니다.
 
-Embedding Model (임베딩): jhgan/ko-sroberta-multitask (Hugging Face)
+커스텀 Elasticsearch 환경: elasticsearch/Dockerfile을 통해 한국어 형태소 분석기 nori가 사전 설치된 커스텀 Elasticsearch 이미지를 빌드하여 사용합니다.
 
-Orchestration (환경): Docker / docker-compose
+Windows/Linux 호환성 보장:
 
-Data Pipeline (데이터): Python (datacollect.py, preprocess_data.py, index_data.py)
+Windows(CRLF)와 Linux(LF) 간의 줄 바꿈 차이로 인한 app/run.sh의 exec format error 오류를 해결하기 위해 .gitattributes 파일을 구성하여 run.sh 파일의 LF 형식을 강제합니다.
 
-RAG Agent (에이전트): Python (customs_agent.py)
+app/Dockerfile에 dos2unix를 설치하여 빌드 시점에 스크립트 형식을 자동으로 변환합니다.
 
-📁 프로젝트 구조
+Ollama 404 오류 해결 (프록시 우회):
 
-/AI_AGENT
-├── docker-compose.yml      # 1. ES + 데이터 파이프라인 실행
-├── elasticsearch/
-│   └── Dockerfile          # Elasticsearch + 'nori' (한국어 분석기) 설치
-├── app/
-│   ├── Dockerfile          # 2. 데이터 파이프라인 Docker 이미지
-│   ├── run.sh              # 3. 아래 3개 스크립트를 순차 실행 (Docker 내부)
-│   ├── datacollect.py      #    (1) 관세청 HTML/PDF 데이터 수집
-│   ├── preprocess_data.py  #    (2) 텍스트 전처리 및 청킹
-│   ├── index_data.py       #    (3) 임베딩 및 Elasticsearch 색인
-│   └── requirements.txt    #    파이프라인에 필요한 Python 라이브러리
-├── pdf_files/              # 원본 데이터로 사용되는 PDF 파일들
-├── customs_agent.py        # 4. RAG AI 에이전트 (로컬 실행)
-├── test_ollama.py          # (Ollama 연결 테스트용 스크립트)
-└── .gitattributes          # (run.sh의 줄바꿈 오류(CRLF) 방지용)
+로컬 customs_agent.py가 Ollama(localhost:11434)로 요청 시 404 Not Found가 발생하는 (시스템 프록시로 인한) 문제를 해결했습니다.
+
+requests 라이브러리가 시스템 프록시를 강제로 무시하도록 proxies={'http': None, 'https_': None} 옵션을 requests.post()에 명시적으로 전달하여 문제를 해결했습니다.
+
+Ollama 모델 경로 문제 해결:
+
+model 'llama3:8b' not found 오류는 OLLAMA_MODELS 환경 변수가 제대로 적용되지 않아 발생했습니다.
+
+Windows 시스템 환경 변수에 OLLAMA_MODELS를 등록하고 PC를 재부팅하여 Ollama가 E 드라이브의 모델을 정상적으로 인식하도록 조치했습니다.
+
+LLM 출력 제어:
+
+Llama 3B 모델이 영어로 답변하는 문제를 해결하기 위해, SYSTEM_PROMPT에 "반드시, 무조건, 예외 없이 한국어로만 작성"하라는 강력한 지시문을 추가하여 한국어 답변을 강제했습니다.
+
+C: 드라이브 용량 확보 (필수 가이드):
+
+Docker의 거대한 .vhdx 가상 디스크를 Docker 설정 > Resources > Advanced를 통해 E 드라이브로 이전했습니다.
+
+빌드 시 C 드라이브 용량이 차오르는 문제는 Docker 설정 > Docker Engine의 daemon.json에 data-root를 E 드라이브로 지정하여 빌드 캐시까지 이전시켰습니다.
+
+Ollama 모델 또한 OLLAMA_MODELS 환경 변수를 통해 E 드라이브로 이전하여 C 드라이브 공간을 확보했습니다.
+
+##⚙️ 2. 기술 스택
+
+LLM: Llama 3B (llama3:8b) / Ollama
+
+Vector DB: Elasticsearch (v9.1.1)
+
+Embedding Model: jhgan/ko-sroberta-multitask
+
+Orchestration: Docker / docker-compose
+
+Core: Python, sentence-transformers, elasticsearch-py, requests
+
+##🏃 3. 프로젝트 실행 가이드 (A-Z)
+
+이 프로젝트를 새로운 환경에서 처음부터 실행하는 전체 과정입니다.
+
+1단계: 필수 프로그램 설치 (Docker & Ollama)
+
+Docker Desktop 설치: Docker를 설치하고 실행합니다.
+
+Ollama 설치: Ollama를 설치하고 실행합니다.
+
+2단계: (중요) C: 드라이브 용량 확보 설정
+
+설치 직후, C 드라이브에 용량이 부족해지는 것을 막기 위해 모든 데이터를 E 드라이브(또는 다른 드라이브)로 이전합니다.
+
+경고: 이 작업은 C 드라이브의 파일을 수동으로 Ctrl+X 해서 옮기면 절대 안 됩니다. 반드시 프로그램의 공식 설정을 통해 이전해야 합니다.
+
+A. Docker 데이터 이전 (2곳)
+
+데이터 본체 (.vhdx) 이전:
+
+Docker Desktop > Settings > Resources > Advanced
+
+Disk image location을 E:\DockerData\wsl-data와 같이 E 드라이브의 새 폴더로 지정합니다.
+
+Apply & restart를 누르고 "Moving disk image..." 팝업을 통해 이동이 완료될 때까지 기다립니다.
+
+(만약 C에 파일이 남아있다면 wsl --shutdown 후 수동 삭제)
+
+빌드 캐시 (data-root) 이전:
+
+Docker Desktop > Settings > Docker Engine
+
+daemon.json 파일에 data-root 경로를 추가합니다. (경로는 \\ 사용)
+
+{
+  "data-root": "E:\\DockerData\\docker-root"
+}
 
 
-⚙️ 1단계: (필수) 로컬 환경 준비
+Apply & restart를 눌러 적용합니다.
 
-이 프로젝트를 실행하기 전에, 로컬 PC에 Docker와 Ollama가 반드시 설치되어 있어야 합니다.
+B. Ollama 모델 이전
 
-Docker Desktop 설치:
+환경 변수 설정:
 
-Docker를 설치하고 실행합니다.
+Windows 검색창에 시스템 환경 변수 편집을 검색하여 실행합니다.
 
-(권장) C 드라이브 용량 확보를 위해 Settings > Resources > Advanced에서 Disk image location을 E 드라이브 등 용량이 넉넉한 곳으로 설정합니다.
+환경 변수 버튼을 클릭합니다.
 
-Ollama 설치:
+사용자 변수 섹션에서 새로 만들기를 클릭합니다.
 
-Ollama를 설치하고 실행합니다.
+변수 이름: OLLAMA_MODELS
 
-(권장) C 드라이브 용량 확보를 위해 Windows 시스템 환경 변수에 OLLAMA_MODELS 변수를 생성하고, 값을 E:\ollama-models와 같이 원하는 경로로 설정합니다.
+변수 값: E:\ollama-models (E 드라이브에 새로 만든 폴더)
 
-Llama 3B 모델 다운로드:
+파일 이동 및 재부팅:
 
-Ollama가 실행 중인 상태에서, 터미널에 아래 명령어를 입력하여 AI 모델을 다운로드합니다.
+Ollama를 완전히 종료합니다. (작업 관리자에서 ollama.exe 강제 종료)
 
+C:\Users\[사용자명]\.ollama\models 안의 파일들을 E:\ollama-models 폴더로 Ctrl+X (잘라내기)하여 옮깁니다.
+
+컴퓨터를 재부팅하여 환경 변수를 시스템에 완전히 적용시킵니다.
+
+3단계: AI 모델 다운로드
+
+재부팅 후, Ollama가 E 드라이브를 인식하는지 확인합니다. 터미널을 열고 llama3:8b 모델을 다운로드합니다.
+
+# E 드라이브의 모델을 인식하는지 확인
+ollama list
+
+# 모델 다운로드 (E 드라이브에 저장됨)
 ollama pull llama3:8b
 
 
-💾 2단계: 데이터베이스 구축 및 데이터 색인 (Docker 실행)
+4단계: 데이터베이스 구축 (Docker 실행)
 
-이 단계는 관세청 데이터를 수집하고 벡터화하여 Elasticsearch에 저장하는 일회성 작업입니다.
+프로젝트의 핵심 데이터 파이프라인을 실행합니다.
 
-이 GitHub 저장소를 로컬 PC에 복제(Clone)합니다.
+# 1. 이 프로젝트를 Git에서 클론(Clone)합니다.
+git clone [저장소 URL]
+cd [프로젝트 폴더]
 
-터미널을 열어 프로젝트의 최상위 폴더(AI_AGENT/)로 이동합니다.
-
-아래 명령어를 실행하여 Docker Compose를 빌드하고 실행합니다.
-
-이 명령어는 elasticsearch 컨테이너(nori 분석기 포함)와 app 컨테이너를 실행시킵니다.
-
-app 컨테이너는 run.sh 스크립트를 통해 데이터 수집부터 색인까지 모든 작업을 자동으로 수행합니다.
-
+# 2. Docker Compose로 Elasticsearch와 데이터 색인 스크립트를 실행합니다.
+# (app/run.sh가 자동으로 실행되어 datacollect, preprocess, index 스크립트를 차례로 실행합니다)
 docker-compose up -d --build
 
 
-데이터 색인이 완료될 때까지 기다립니다.
-
-(매우 중요!)
-다른 터미널을 열어 아래 명령어로 로그를 확인합니다.
+(중요!)
+app 컨테이너가 모든 데이터(77개 문서)를 임베딩하고 색인할 때까지 몇 분 정도 기다려야 합니다. 아래 명령어로 로그를 확인하세요.
 
 docker-compose logs -f app
 
 
-로그가 멈추고 >> 모든 작업 완료! ... 와 --- 모든 Docker 작업 완료 --- 메시지가 보이면 데이터 준비가 끝난 것입니다.
+>> 모든 작업 완료! ... 와 --- 모든 Docker 작업 완료 --- 메시지가 보이면 다음 단계로 넘어갑니다.
 
-🤖 3단계: AI 에이전트 실행 (로컬 Python)
+5단계: RAG AI 에이전트 실행 (로컬)
 
-데이터 준비가 완료되었으니, 이제 AI 에이전트를 실행하여 질문할 수 있습니다.
+이제 준비된 데이터베이스와 LLM을 연결하는 customs_agent.py를 로컬에서 실행합니다.
 
-프로젝트 폴더에서 Python 가상환경(.venv)을 생성하고 활성화합니다.
-
-# 가상환경 생성 (최초 1회)
+# 1. Python 가상환경 생성 및 활성화
 python -m venv .venv
-
-# 가상환경 활성화 (PowerShell 기준)
 .venv\Scripts\activate
 
-
-customs_agent.py 실행에 필요한 라이브러리를 설치합니다.
-
-(app/requirements.txt에 필요한 라이브러리가 대부분 포함되어 있습니다.)
-
+# 2. 필요한 라이브러리 설치
+# (app/requirements.txt에는 app 컨테이너용 라이브러리만 있으므로,
+#  customs_agent.py에 필요한 라이브러리도 설치해야 합니다.)
 pip install -r app/requirements.txt
+pip install sentence-transformers elasticsearch-py requests
 
-
-Ollama 프로그램이 실행 중인지 다시 한번 확인합니다. (Docker와 별개)
-
-customs_agent.py 스크립트를 실행합니다!
-
+# 3. AI 에이전트 실행
 python customs_agent.py
 
 
-터미널에 환영 메시지가 뜨면, 관세 행정에 대해 질문하시면 됩니다.
+6단계: 질문하기
 
-[질문 입력] > 해외 직구 면세 한도 알려줘
+터미널에 [질문 입력] > 프롬프트가 뜨면, 관세 행정에 대해 질문합니다.
+
+[질문 입력] > 해외 이사물품 통관 절차 알려줘
+[1/3] '해외 이사물품 통관 절차 알려줘' (와)과 관련된 문서를 검색합니다...
+✅ 총 3개의 관련 문서를 찾았습니다.
+[2/3] 검색된 문서를 바탕으로 답변을 생성합니다...
+✅ 답변 생성 완료.
+[3/3] 최종 답변을 반환합니다.
+
+[커스텀-봇 답변] 🤖:
+(Llama 3B가 생성한 한국어 답변)
 
 
-🏁 종료하기
+7단계: 종료하기
 
-AI 에이전트 종료:
-customs_agent.py가 실행 중인 터미널에서 q 또는 exit를 입력합니다.
+# 1. AI 에이전트 종료 (q 또는 exit 입력)
 
-Docker 컨테이너 종료: (Elasticsearch DB 종료)
-
+# 2. Docker 컨테이너(Elasticsearch) 종료
 docker-compose down
